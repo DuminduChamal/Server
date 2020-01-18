@@ -8,76 +8,95 @@
 #include<string.h> 
 #include <unistd.h>
 
-#define html "text/html"
-#define mp3	"audio/mpeg"
-#define mp4	"video/mp4"
-#define jpg "image/jpeg"
-#define jpeg "image/jpeg"
-#define png "image/png"
-#define txt "text/plain"
+#define html "Content-Type: text/html\r\n\r\n"
+#define mp3	"Content-Type: audio/mpeg\r\n\r\n"
+#define mp4	"Content-Type: video/mp4\r\n\r\n"
+#define jpg "Content-Type: image/jpeg\r\n\r\n"
+#define txt "Content-Type: text/plain\r\n\r\n"
 
-int port = 3200;
+int port = 9300;
 char *mimeType;
 
 void responce(int client_fd, char *header, char *body, struct sockaddr_in client_address)
 {
 	int len = strlen(body);
-	printf("%d\n",len);
+	//printf("%d\n",len);
 	char responce[len+100];
 	int lengthOfResponce = sprintf(responce, "%s\n" "connection : close\n" "content length : %d\n" "content type : %s\n" "\n", header, len, mimeType);
-	printf("%s y\n\n ",responce);
+	//printf("%s y\n\n ",responce);
 	//memcpy(responce+lengthOfResponce, body, strlen(body));
 	int index = 0;
-	int loop;
+	int i,j;
 	char responceArray[len+lengthOfResponce];
-   	for(loop = 0; loop < strlen(responce); loop++) {
-      responceArray[index] = responce[loop];
+   	for(i = 0; i < strlen(responce); i++) 
+		{
+      responceArray[index] = responce[i];
       index++;
    	}
  
-   	for(loop = 0; loop < strlen(body); loop++) {
-      responceArray[index] = body[loop];
+   	for(j = 0; j < strlen(body); j++) {
+      responceArray[index] = body[j];
       index++;
    	}
-	printf("%s\n", responceArray);
+	//printf("%s\n", responceArray);
 	//printf("%s\n", responce);
 	int sent_size = send(client_fd, responceArray, lengthOfResponce+len,0);
 	printf("Sent %d bytes to client %s\n",sent_size, inet_ntoa(client_address.sin_addr));
 }
 
-// void sendFile(int client_fd, char *fileName, struct sockaddr_in client_address)
-// {
-// 	char *source;
-// 	FILE *file = fopen(fileName,"r");
-// 	size_t bufferSize;
-// 	if(file!=NULL)
-// 	{
-// 		if(fseek(file, 0L, SEEK_END)==0)
-// 		{
-// 			bufferSize = ftell(file);
-// 			if(bufferSize>10000000)
-// 			{
-// 				char *errorMSG = "Size limit exeeds";
-// 				int lengthOfError = strlen(errorMSG);
-// 				responce(client_fd,"HTTP/1.1 500 INTERNAL SERVER ERROR", errorMSG, lengthOfError, client_address);
-// 				return;
-// 			}
-// 			source = malloc(sizeof(char)*(bufferSize+1));
-// 			fseek(file, 0L, SEEK_SET);
-// 			fread(source, sizeof(char), bufferSize, file);
-// 			responce(client_fd, "HTTP/1.1 200 OK", source, bufferSize, client_address);
-// 		}
-// 		free(source);
-// 		fclose(file);
-// 	}
-// 	else
-// 	{
-// 		char *errorMSG = "FILE NOT FOUND!!!";
-// 		mimeType=html;
-// 		int lengthOfError = strlen(errorMSG);
-// 		responce(client_fd,"HTTP/1.1 404 NOT FOUND", errorMSG, lengthOfError, client_address);
-// 	}
-// }
+void sendFile(int client_fd, char *fileName, struct sockaddr_in client_address, char *mime)
+{
+	char source[1024];
+	FILE *file = fopen(fileName,"r");
+	size_t bufferSiz, readVal;
+	char status[] = "HTTP/1.1 200 OK\r\n";
+	
+	if(file!=NULL)
+	{
+		write(client_fd, status, strlen(status));
+		if(strcmp(mime, "html") == 0) 
+		{
+			mimeType = html;	
+		} 
+		else if(strcmp(mime, "jpg") == 0 || strcmp(mime, "jpeg") == 0 || strcmp(mime, "png") == 0) 
+		{
+			mimeType = jpg;
+		}
+		else if(strcmp(mime, "mp3") == 0) 
+		{
+			mimeType = mp3;
+		}
+		else if(strcmp(mime, "mp4") == 0) 
+		{
+			mimeType = mp4;
+		}
+		else if(strcmp(mime, "webm") == 0) 
+		{
+			mimeType = mp4;
+		}
+		else if(strcmp(mime, "txt") == 0) 
+		{
+			mimeType = txt;
+		}
+		int sent_size = write(client_fd, mimeType, strlen(mimeType));
+		//int sent_size = send(client_fd, responceArray, lengthOfResponce+len,0);
+		printf("Sent %d bytes to client %s\n",sent_size, inet_ntoa(client_address.sin_addr));		
+		while((readVal = fread(source, 1, sizeof(source), file))>0) 
+		{
+			write(client_fd, source, readVal);
+		}
+		
+	}
+	else
+	{
+		char *errorMSG = "<h1>FILE NOT FOUND!!!<h1>";
+		mimeType=html;
+		int lengthOfError = strlen(errorMSG);
+		responce(client_fd,"HTTP/1.1 404 NOT FOUND", errorMSG, client_address);
+	}
+}
+
+
 
 int main()
 {
@@ -140,7 +159,7 @@ int main()
 		char *mime = strrchr(requestPath, '.')+1;
 		char *fileName = strtok(requestPath, "/");
 
-
+		printf("file name : %s\n", fileName);
 		
 		
 		if(mime)
@@ -155,10 +174,19 @@ int main()
 		
 		if(!strcmp(requestType,"GET")&& !strcmp(requestPath,"/"))
 		{
-			char *msg = "It's a GET request to base URL";
+			char *msg = "<h1>It's a GET request to base URL</h1>";
 			mimeType = html;
 			int lengthOfMsg = strlen(msg);
 			responce(client_socket,"HTTP/1.1 200 OK", msg, client_address);
+		}
+		else if(strcmp(requestType,"GET")==0)
+		{
+			//printf("here\n");
+			char *msg = "<h1>It's a GET request to base URL</h1>";
+			mimeType = html;
+			int lengthOfMsg = strlen(msg);
+			//responce(client_socket,"HTTP/1.1 200 OK", msg, client_address);
+			sendFile(client_socket, fileName, client_address, mime);
 		}
 		else if(!strcmp(requestType,"POST")&& !strcmp(requestPath,"/"))
 		{
